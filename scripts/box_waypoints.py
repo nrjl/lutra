@@ -25,12 +25,15 @@ class WaypointBoxPublisher:
         
     def input_loop(self):
         out = 'a'
+        print "Options: b - new box, c - clear current waypoint, a - abort, x - exit"
         while ((not rospy.is_shutdown()) and (out != 'x')):
-            out = raw_input("Enter command: b - make new box, c - clear waypoints, x - exit: ")
-            if (out == 'b'):
+            out = raw_input("Enter command: ")
+            if (out.lower() == 'b'):
                 boxer.send_box()
-            elif (out == 'c'):
-                boxer.send_clear()
+            elif (out.lower() == 'c'):
+                self.clear_pub_.publish("clear")
+            elif (out.lower() == 'a'):
+                self.clear_pub_.publish("abort")
             # rospy.spin()
         print 'Exiting, goodbye!'
         
