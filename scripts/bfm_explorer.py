@@ -31,7 +31,7 @@ class fast_marching_explorer:
         self.GP_model.Gaussian_noise.variance = 0.5
         
         # create cost graph from the GP estimate
-        self.GP_cost_graph = fm_graphtools.CostmapGrid(gridsize[0], gridsize[1], obstacles=obs)
+        self.GP_cost_graph = fm_graphtools.CostmapGridFixedObs(gridsize[0], gridsize[1], obstacles=obs)
         Xtemp, Ytemp = np.meshgrid(np.arange(self.GP_cost_graph.width), np.arange(self.GP_cost_graph.height))
         self.Xfull = np.vstack([Xtemp.ravel(), Ytemp.ravel()]).transpose()
         self.Yfull, self.varYfull = self.GP_model.predict(self.Xfull)
