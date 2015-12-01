@@ -67,7 +67,7 @@ class FastMarcher:
         self.frontier.clear()
         self.frontier.push(self.start_node, 0+self.heuristic_fun(self.start_node, self.end_node))
         self.cost_to_come = {}
-        self.parent_list = {}       
+        self.parent_list = {self.start_node:[self.start_node]}       
         
         self.continue_FM_search()
         self.create_child_list()
@@ -113,7 +113,7 @@ class FastMarcher:
                     self.parent_list[n_node] = parent_update
                     
             if self.image_frames != 0 and u_A > self.plot_cost :            
-                self.image_frames.append(fm_plottools.draw_costmap(self.axes, self.graph, self.cost_to_come))
+                self.image_frames.append(fm_plottools.draw_costmap(self.axes, self.graph, self.cost_to_come, start_nodes=self.start_node))
                 self.plot_cost += self.delta_plot
                 
             if (c_node == self.end_node) or (self.frontier.count() <= 0):
@@ -148,6 +148,8 @@ class FastMarcher:
                     weight += l_weight
                 grad = grad/weight
             
+            if all( (t == 0 for t in grad) ):
+                grad = np.random.randn(2)*0.1
             Mgrad = math.sqrt(grad[0]**2 + grad[1]**2)
             new_node = (current_node[0]+self.step_dist*grad[0]/Mgrad, current_node[1]+self.step_dist*grad[1]/Mgrad) 
             current_node = new_node
@@ -551,10 +553,14 @@ class FullBiFastMarcher:
     def set_plots(self, imf, ax):
         self.image_frames = imf
         self.axes = ax
+        self.FastMarcherSG.set_plots(imf,ax)
+        self.FastMarcherGS.set_plots(imf,ax)
         
     def set_plot_costs(self, startcost, delta_cost):
         self.plot_cost = startcost
         self.delta_plot = delta_cost
+        self.FastMarcherSG.set_plot_costs(startcost, delta_cost)
+        self.FastMarcherGS.set_plot_costs(startcost, delta_cost)
         
     def search(self):
         self.FastMarcherSG.search()
@@ -583,13 +589,15 @@ class FullBiFastMarcher:
         self.graph.clear_delta_costs()
         self.graph.add_delta_costs(new_cost)
         
-        
+        # All nodes that have changed cost are killed
         kill_list = set(new_cost.keys())
+        
+        # Interface nodes are neighbours of a killed node with a lower cost (that are not also being killed)
         interface = set()
         cost_to_come = copy.copy(self.FastMarcherSG.cost_to_come)
         for node in new_cost:
             for nnode, costTEMP in self.graph.neighbours(node):
-                if cost_to_come[nnode] < cost_to_come[node] :
+                if (cost_to_come[nnode] < cost_to_come[node]):
                     interface.add(nnode)
     
         # Find boundary points closest to start and goal
@@ -611,12 +619,14 @@ class FullBiFastMarcher:
             self.updated_min_path_cost = self.min_path_cost
             return
         
+        
         temp_path_cost = copy.copy(self.path_cost)
         for killnode in kill_list:
             del cost_to_come[killnode]
             del temp_path_cost[killnode]
             # if killnode in new_parent_list: del new_parent_list[killnode]
         
+        # Current minimum path cost
         self.updated_min_path_cost = min(temp_path_cost.values())
         #if self.image_frames != 0:
         #    self.axes.clear()
@@ -627,6 +637,8 @@ class FullBiFastMarcher:
         if self.image_frames != 0:
             self.plot_cost, NULL = min(frontier.elements)
         u_A = 0
+        
+        # I changed this from u_A + min_ctg < self.min_path_cost
         while u_A + min_ctg < self.min_path_cost:
             try:
                 c_priority, c_node = frontier.pop()
@@ -686,7 +698,241 @@ class FullBiFastMarcher:
                 self.updated_path = copy.copy(self.path)
 
         return 
-      
+
+    def kill_downwind(self, start_nodes, cost_to_come, min_ctg):
+        interface_list = set([])
+        downwind_list = set([])
+        search_list = fm_graphtools.PriorityQueue([])
+        for c_node in start_nodes:
+            search_list.push(c_node, self.FastMarcherSG.cost_to_come[c_node])
+        
+        c_cost, c_node = search_list.pop()
+        # Start from the start node
+        while True:
+            downwind_list.update( {c_node} )
+            del cost_to_come[c_node]
+            # Check all the neighbours of the current node
+            for node, TEMPCOST in self.graph.neighbours(c_node):
+                # If they're children, add them to the search
+                if (c_node in self.FastMarcherSG.child_list) and node in self.FastMarcherSG.child_list[c_node]:
+                    # If we're still inside the min_ctg, keep adding nodes
+                    if self.FastMarcherGS.cost_to_come[node] >= min_ctg:
+                        search_list.push(node, self.FastMarcherSG.cost_to_come[node])
+                # If they're not children and they're not in the downwind list, they're interface nodes
+                elif node not in downwind_list:
+                    interface_list.update( {node} )
+            try:
+                c_cost, c_node = search_list.pop()
+                self.nodes_popped+=1
+            except KeyError:
+                break
+        return interface_list
+                  
+    def update_new(self, new_cost, recalc_path = 0):
+        # New cost should be added as a dictionary, with elements  [(node) : delta_cost]
+        
+        M_s = set()
+        #M_g = set()
+        P_g = {}
+        A = {}
+        
+        Q = fm_graphtools.PriorityQueue([])
+        Q.clear()
+        
+        A_s = copy.copy(self.FastMarcherSG.cost_to_come)
+        A_g = copy.copy(self.FastMarcherGS.cost_to_come)
+        
+        min_cts = self.min_path_cost
+        min_ctg = self.min_path_cost
+        
+        for x_d in new_cost:
+            min_cts = min(A_s[x_d], min_cts)
+            min_ctg = min(A_g[x_d], min_ctg)
+            if new_cost[x_d] > 0:
+                A_s[x_d] = self.min_path_cost
+                A_g[x_d] = self.min_path_cost
+            for x_p in self.FastMarcherSG.parent_list[x_d]:
+                if x_p not in new_cost:
+                    M_s.add(x_p)
+            for x_p in self.FastMarcherGS.parent_list[x_d]:
+                if x_p not in new_cost:
+                    M_s.add(x_p)
+
+        if min_cts + min_ctg > self.min_path_cost:
+            self.updated_min_path_cost = self.min_path_cost
+            return
+                                  
+        for x_M in M_s:
+            c_s = A_s[x_M]-min_cts
+            c_g = A_g[x_p]-min_ctg
+            if c_s < c_g:
+                Q.push(x_M, c_s)
+                P_g[x_M] = False
+                for x_p in self.FastMarcherSG.parent_list[x_M]:
+                    A[x_p] = A_s[x_p]-min_cts
+                
+        #for x_M in M_g:
+        #    Q.push(x_M, A_g[x_M]-min_ctg)
+        #    P_g[x_M] = True
+        #    for x_p in self.FastMarcherGS.parent_list[x_M]:
+        #        A[x_p] = A_g[x_p]-min_ctg       
+        
+        C_prime = min([A_s[x] + A_g[x] for x in A_s])
+        C_b = C_prime - min_cts - min_ctg
+
+        if C_b < 0:
+            self.updated_min_path_cost = self.min_path_cost
+            return
+            
+        C_up = self.ReSearch(Q, A, P_g, C_b)
+        self.updated_min_path_cost = C_up + min_cts + min_ctg
+        
+    def ReSearch(self, Q, A, P_g, C_b):
+        c_n = 0
+        nodes_popped = 0
+        while (Q.count() > 0) and (c_n < C_b/2):
+            try:
+                c_n, n = Q.pop()
+                nodes_popped+=1
+            except KeyError:
+                break
+                
+            if n in A:
+                return c_n + A[n]
+            A[n] = c_n
+            
+            for m, tau in self.graph.neighbours(n):                    
+                c_k = c_n + tau + 1.0
+                for k, temp in self.graph.neighbours(m):
+                    if k in A and A[k] < c_k:
+                        c_k = A[k]
+                        
+                if tau > abs(c_n - c_k):
+                    c_cost = 0.5*(c_n + c_k + math.sqrt(2*tau**2 - (c_n - c_k)**2))
+                else:
+                    if c_n <= c_k:
+                        c_cost = c_n + tau
+                    else:
+                        c_cost = c_k + tau
+                
+                if m in A and P_g[m] < P_g[n]:
+                    if c_cost < A[m]:
+                        del A[m]
+                        Q.push(m, c_cost)
+                        P_g[m] = P_g[n]
+                else:
+                    Q.push(m, c_cost)
+                    P_g[m] = P_g[n]
+                    
+            if self.image_frames != 0 and c_n > self.plot_cost :            
+                self.image_frames.append(fm_plottools.draw_costmap(self.axes, self.graph, A))
+                self.plot_cost = c_n + self.delta_plot
+            
+                
+        if self.image_frames != 0:
+            self.image_frames.append(fm_plottools.draw_costmap(self.axes, self.graph, A))
+        print "biFM ReSearch: nodes popped: {0}".format(nodes_popped)
+        self.search_nodes=nodes_popped    
+
+        return C_b
+
+    def update_new2(self, new_cost,loc=None):
+        # New cost should be added as a dictionary, with elements  [(node) : delta_cost]
+        self.nodes_popped = 0
+
+        self.graph.clear_delta_costs()
+        self.graph.add_delta_costs(new_cost)
+        
+        Q = fm_graphtools.PriorityQueue([])
+        Q.clear()
+        
+        if self.image_frames != 0:
+            self.image_frames.append(self.plot_cost_frame(self.FastMarcherSG.cost_to_come,loc))
+        
+        min_cts = self.min_path_cost
+        min_ctg = self.min_path_cost
+                
+        for x_d in new_cost:
+            min_cts = min(self.FastMarcherSG.cost_to_come[x_d], min_cts)
+            min_ctg = min(self.FastMarcherGS.cost_to_come[x_d], min_ctg)
+
+        if min_cts + min_ctg > self.min_path_cost:
+            self.updated_min_path_cost = self.min_path_cost
+            return
+        
+        A_prime = copy.copy(self.FastMarcherSG.cost_to_come)
+        if (new_cost.itervalues().next() > 0):
+            M = self.kill_downwind(new_cost.keys(), A_prime, min_ctg)
+        else:
+            M = set()
+            for x_d in new_cost:
+                for x_p in (y for y in self.FastMarcherSG.parent_list[x_d] if y not in new_cost):
+                    M.update({x_p})
+        if self.FastMarcherSG.start_node in new_cost:
+            M.update({self.FastMarcherSG.start_node})
+
+        for x_M in M:
+            Q.push(x_M, self.FastMarcherSG.cost_to_come[x_M])
+                
+        C_prime = min([A_prime[x] + self.FastMarcherGS.cost_to_come[x] for x in A_prime])
+        C_b = C_prime - min_ctg
+
+        if min_cts > C_b:
+            self.updated_min_path_cost = C_prime
+            return
+            
+        C_prime = self.ReSearch2(Q, A_prime, C_b, min_ctg,loc)
+        self.updated_min_path_cost = C_prime                
+
+    def ReSearch2(self, frontier, cost_to_come, C, min_ctg,loc=None):
+        if self.image_frames != 0:
+            self.plot_cost, NULL = min(frontier.elements)
+        
+        while True:
+            try:
+                c_priority, c_node = frontier.pop()
+            except KeyError:
+                break
+            self.nodes_popped+=1
+            u_A = c_priority
+            if u_A > C:
+                if self.image_frames != 0:
+                    self.image_frames.append(self.plot_cost_frame(cost_to_come, loc))
+                return C+min_ctg
+            elif self.FastMarcherGS.cost_to_come[c_node] <= min_ctg:
+                if self.image_frames != 0:
+                    self.image_frames.append(self.plot_cost_frame(cost_to_come, loc))
+                return u_A + self.FastMarcherGS.cost_to_come[c_node]
+                    
+            cost_to_come[c_node] = u_A
+            for n_node, tau_k in self.graph.neighbours(c_node):
+                u_B = u_A + tau_k + 1.0
+                adjacency = (n_node[0]-c_node[0], n_node[1]-c_node[1])
+                for adjacent_node in self.FastMarcherSG.adjacency_list[adjacency]:
+                    B_node = (n_node[0]+adjacent_node[0], n_node[1]+adjacent_node[1])
+                    if B_node in cost_to_come and cost_to_come[B_node] < u_B:
+                        u_B = cost_to_come[B_node]
+                if tau_k > abs(u_A - u_B):
+                    c_cost = 0.5*(u_A + u_B + math.sqrt(2*tau_k**2 - (u_A - u_B)**2))
+                else:
+                    if u_A <= u_B:
+                        c_cost = u_A + tau_k
+                    else:
+                        c_cost = u_B + tau_k
+                if n_node not in cost_to_come or cost_to_come[n_node] > c_cost:
+                    frontier.push(n_node, c_cost)
+                    
+            if self.image_frames != 0 and u_A > self.plot_cost :            
+                self.image_frames.append(self.plot_cost_frame(cost_to_come, loc))
+                self.plot_cost += self.delta_plot
+    
+    def plot_cost_frame(self, cost_to_come,loc):
+        tempframe=fm_plottools.draw_costmap(self.axes, self.FastMarcherSG.graph, cost_to_come)
+        if loc != None:
+            tempframe.append(self.axes.plot(loc[0], loc[1], 'wx', mew=2, ms=10)[0])
+            tempframe.append(self.axes.plot(loc[0], loc[1], 'wo', mew=1, ms=80, mfc='none', mec='w' )[0])
+        return tempframe
+    
 
 '''
         min_cost = 1000

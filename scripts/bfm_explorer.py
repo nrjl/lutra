@@ -17,7 +17,7 @@ class mat_cost_function:
         return self.mat[a,b]
 
 class fast_marching_explorer:
-    def __init__(self, gridsize, start_node, end_node, X, Y, mean_value=0, obs=[]):
+    def __init__(self, gridsize, start_node, end_node, X, Y, mean_value=0, obs=[], corridor=False):
         self.start_node = start_node
         self.end_node = end_node
         
@@ -26,9 +26,9 @@ class fast_marching_explorer:
         self.Y = Y
         self.mean_value = mean_value
         self.GP_model = GPy.models.GPRegression(X,Y-mean_value,GPy.kern.RBF(2))
-        self.GP_model.kern.lengthscale = 16
-        self.GP_model.kern.variance = 25
-        self.GP_model.Gaussian_noise.variance = 0.5
+        self.GP_model.kern.lengthscale = 14
+        self.GP_model.kern.variance = 45
+        self.GP_model.Gaussian_noise.variance = 2.0
         
         # create cost graph from the GP estimate
         self.GP_cost_graph = fm_graphtools.CostmapGridFixedObs(gridsize[0], gridsize[1], obstacles=obs)
@@ -44,12 +44,13 @@ class fast_marching_explorer:
         self.fbFM.set_start(self.start_node)
         self.fbFM.set_goal(self.end_node)
         
-        # Initial search
-        self.fbFM.search()
-        self.fbFM.pull_path()
         
     def cost_update(self, cost_update):
         self.fbFM.update(cost_update)
+        return self.fbFM.updated_min_path_cost
+    
+    def cost_update_new(self, cost_update,loc=None):
+        self.fbFM.update_new2(cost_update,loc)
         return self.fbFM.updated_min_path_cost
         
     def add_observation(self, Xnew, Ynew):
@@ -66,5 +67,19 @@ class fast_marching_explorer:
         self.fbFM.set_graph(self.GP_cost_graph)
         self.fbFM.set_start(self.start_node)
         self.fbFM.set_goal(self.end_node)
+        self.fbFM.search()
+        self.fbFM.pull_path()
+
+    def set_plots(self, imf, ax):
+        self.fbFM.set_plots(imf, ax)
+        
+    def set_plot_costs(self, startcost, delta_cost):
+        self.fbFM.set_plot_costs(startcost, delta_cost)
+        
+    def find_corridor(self):
+        self.fbFM.find_corridor()
+        
+    def search(self):
+        # Initial search
         self.fbFM.search()
         self.fbFM.pull_path()
