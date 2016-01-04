@@ -51,7 +51,7 @@ class LutraBagReader:
         tnow = rospy.get_time()
                 
         if not self.poses.size:
-            print "First pose record, initialising origin here."
+            print "First pose record, initialising origin at ({0},{1}).".format(msg.position.latitude, msg.position.longitude)
             origin = copy.copy(pp)
             origin.easting -= self.offpos[0]
             origin.northing -= self.offpos[1]
