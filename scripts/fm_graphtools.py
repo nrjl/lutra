@@ -83,12 +83,14 @@ class Graph:
         return self.edges[id]
 
 class CostmapGrid:
-    def __init__(self, width, height, cost_fun=unit_cost_function, obstacles=[]):
+    def __init__(self, width, height, cost_fun=unit_cost_function, obstacles=[], origin=(0,0)):
         self.width = width
         self.height = height
         self.obstacles = obstacles         
         self.cost_fun = cost_fun
         self.delta_costs = {}
+        self.origin = origin
+        self.left_right = (-origin[0], self.width-origin[0])
         
     def copy(self):
         return CostmapGrid(self.width, self.height, self.cost_fun, self.obstacles)

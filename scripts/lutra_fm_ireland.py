@@ -40,7 +40,7 @@ def calc_est_path_cost(gp_model, mean_val, path):
 
 class LutraFastMarchingExplorer:
 
-    def __init__(self, nwp, nloc, V, sgnodes, GPm, mean_depth):
+    def __init__(self, total_waypoints, n_samples, operating_area, sgnodes, GPm, mean_depth):
         print "Creating Lutra Fast Marching Explorer object"
         
         # ROS pub/subs
@@ -50,9 +50,9 @@ class LutraFastMarchingExplorer:
         self.wp_pub_ = rospy.Publisher('/crw_waypoint_sub', GeoPose, queue_size=10)
         
         # FM search area
-        self.n_samples = nloc
-        self.total_waypoints = nwp
-        self.operating_area = V
+        self.n_samples = n_samples
+        self.total_waypoints = total_waypoints
+        self.operating_area = operating_area
         self.start_node = sgnodes[0]
         self.end_node = sgnodes[1]
         self.gridsize = [V[:,0].max() - V[:,0].min(), V[:,1].max() - V[:,1].min()]
@@ -89,6 +89,16 @@ class LutraFastMarchingExplorer:
     def get_local_coords(self, utm_pose):
         return np.array([math.floor(utm_pose.easting - self.zero_utm.easting), math.floor(utm_pose.northing - self.zero_utm.northing)])
 
+    def local_to_grid(self, point):
+        px = np.min(np.max(point[0] - self.origin_offset[0], 0), self.gridsize[0])
+        py = np.min(np.max(point[1] - self.origin_offset[1], 0), self.gridsize[1])
+        return np.array([px,py])
+        
+    def grid_to_local(self, point):
+        px = point[0] + self.origin_offset[0]
+        py = point[1] + self.origin_offset[1]
+        return np.array([px,py])    
+
     def get_utm_coords(self, local_pose):
         out_pose = copy.copy(self.zero_utm)
         out_pose.easting += local_pose[0]
@@ -102,7 +112,7 @@ class LutraFastMarchingExplorer:
         return False
         
     def create_random_samples(self):
-        # Rejection sampling of points in V region
+        # Rejection sampling of points in V region - IN LOCAL COORDINATES
         self.sample_locations = np.zeros((self.n_samples, 2))
         numsamp = 0
         while numsamp < self.n_samples:
@@ -149,6 +159,7 @@ class LutraFastMarchingExplorer:
             print "Arrived at first waypoint, creating fast march explorer."
             self.zero_utm = pp
 
+            obstacles = [
             self.true_g = fm_graphtools.CostmapGrid(self.gridsize[0], self.gridsize[1], self.GP_cost_function)
             explorer_cost = bfm_explorer.mat_cost_function(self.true_g, self.GP_cost_function)
             self.true_g.cost_fun = explorer_cost.calc_cost
@@ -189,20 +200,20 @@ class LutraFastMarchingExplorer:
         # Find next sample point
         fm_best_cost = -1
 
-        for tx in self.test_gridx:
-            for ty in self.test_gridy:
-                if  ((tx,ty) in self.true_g.obstacles):
-                    continue
+        for [tx,ty] in self.sample_locations:
 
-                if not self.previously_sampled([tx,ty]):
-                    current_value = 0
-                    for td in self.delta_costs:
-                        stdY = math.sqrt(self.fm_sampling_explorer.varYfull[ty*self.gridsize[0]+tx])
-                        cost_update =fm_graphtools.polynomial_cost_modifier(self.fm_sampling_explorer.GP_cost_graph, tx, ty, 15, td*stdY)
-                        current_value += self.fm_sampling_explorer.cost_update(cost_update)
-                    if fm_best_cost == -1 or (current_value < fm_best_cost):
-                        fm_best_cost = current_value
-                        fm_bestX = [tx,ty]
+            if  ((tx,ty) in self.true_g.obstacles):
+                continue
+
+            if not self.previously_sampled([tx,ty]):
+                current_value = 0
+                for td in self.delta_costs:
+                    stdY = math.sqrt(self.fm_sampling_explorer.varYfull[ty*self.gridsize[0]+tx])
+                    cost_update =fm_graphtools.polynomial_cost_modifier(self.fm_sampling_explorer.GP_cost_graph, tx, ty, 15, td*stdY)
+                    current_value += self.fm_sampling_explorer.cost_update(cost_update)
+                if fm_best_cost == -1 or (current_value < fm_best_cost):
+                    fm_best_cost = current_value
+                    fm_bestX = [tx,ty]
         self.plot_current_path(fm_bestX)
         target_utm = self.get_utm_coords(fm_bestX)
         print "Next target point selected: E = {0}m, N = {1}m.".format(fm_bestX[0], fm_bestX[1])
