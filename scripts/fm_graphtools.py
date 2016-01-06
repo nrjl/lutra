@@ -90,14 +90,20 @@ class CostmapGrid:
         self.cost_fun = cost_fun
         self.delta_costs = {}
         self.origin = origin
-        self.left_right = (-origin[0], self.width-origin[0])
+        self.set_bounds()
+        
+    def set_bounds(self):
+        self.lrmin = -self.origin[0]
+        self.lrmax = self.width-self.origin[0]
+        self.udmin = -self.origin[1]
+        self.udmax = self.height-self.origin[1]
         
     def copy(self):
-        return CostmapGrid(self.width, self.height, self.cost_fun, self.obstacles)
+        return CostmapGrid(self.width, self.height, self.cost_fun, self.obstacles, self.origin)
         
     def in_bounds(self, id):
         (x, y) = id
-        return 0 <= x < self.width and 0 <= y < self.height
+        return self.left_right <= x < self.width and 0 <= y < self.height
    
     def passable(self, id):
         return id not in self.obstacles
@@ -172,22 +178,24 @@ class PriorityQueue(object):
             heapq.heappop(self.elements)
 
 class CostmapGridFixedObs(CostmapGrid):
-    def __init__(self, width, height, cost_fun=unit_cost_function, obstacles=[]):
+    def __init__(self, width, height, cost_fun=unit_cost_function, obstacles=[], origin=(0,0)):
         self.width = width
         self.height = height
         self.obstacles = obstacles         
         self.cost_fun = cost_fun
         self.delta_costs = {}
+        self.origin=origin
+        self.set_bounds()
         self.rebuild_neighbours()
              
     def copy(self):
-        return CostmapGridFixedObs(self.width, self.height, self.cost_fun, self.obstacles)
+        return CostmapGridFixedObs(self.width, self.height, self.cost_fun, self.obstacles, self.origin)
    
     def passable(self, id):
         return id not in self.obstacles
    
     def neighbours(self, id):
-        results = [((a,b), self.node_cost((a,b))) for (a,b) in self.fixed_neighbours[id]]
+        results = [(node, self.node_cost(node)) for node in self.fixed_neighbours[id]]
         return results
         
     def update_obstacles(self, new_obstacles):
@@ -198,8 +206,8 @@ class CostmapGridFixedObs(CostmapGrid):
         
     def rebuild_neighbours(self):
         self.fixed_neighbours = {}
-        for x in range(self.width):
-            for y in range(self.height):
+        for x in range(self.lrmin, self.lrmax):
+            for y in range(self.udmin, self.udmax):
                 results = [(x+1, y), (x, y-1), (x-1, y), (x, y+1)]
                 results = filter(self.in_bounds, results)
                 results = filter(self.passable, results)
