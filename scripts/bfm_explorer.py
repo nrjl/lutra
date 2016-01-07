@@ -9,13 +9,14 @@ def zero_fun(a,b):
 class mat_cost_function:
     def __init__(self, graph, cost_fun=zero_fun, *args):
         self.mat = np.zeros((graph.width, graph.height))
-        self.origin = graph.origin
+        self.left = graph.left
+        self.bottom = graph.bottom
         for x in range(graph.width):
             for y in range(graph.height):
-                self.mat[x,y] = cost_fun(x-self.origin[0],y-self.origin[1], *args)
+                self.mat[x,y] = cost_fun(self.left+x, self.bottom+y, *args)
     
     def calc_cost(self,a,b):
-        return self.mat[a+self.origin[0],b+self.origin[1]]
+        return self.mat[a-self.left,b-self.bottom]
 
 class fast_marching_explorer:
     def __init__(self, gridsize, start_node, end_node, X, Y, mean_value=0, obs=[], corridor=False):

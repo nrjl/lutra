@@ -11,7 +11,7 @@ plt.rc('font',**{'family':'serif','serif':['Computer Modern Roman']})
 #plt.rc('font',**{'family':'sans-serif','sans-serif':['Computer Modern Sans Serif']})
 plt.rc('text', usetex=True)
 
-REBUILD_MODEL = False
+REBUILD_MODEL = True
 
 home_dir = os.path.expanduser("~")
 fh = open(home_dir+'/catkin_ws/src/ros_lutra/data/sonar_data.pkl', 'rb')
