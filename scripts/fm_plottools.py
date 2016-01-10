@@ -39,17 +39,18 @@ def draw_grid(axes, grid, path=None, max_cost = 0, min_cost = []):
     grid_mat = np.zeros((grid.width, grid.height))
     for x in range(grid.width):
         for y in range(grid.height):
-            grid_mat[x,y] = grid.node_cost((x,y))
+            grid_mat[x,y] = grid.node_cost((grid.left+x, grid.bottom+y))
     for x,y in grid.obstacles:
-        grid_mat[x,y] = -1
+        grid_mat[x-grid.left,y-grid.bottom] = -1
     grid_mat = np.ma.masked_where(grid_mat == -1, grid_mat)
     max_cost = max(max_cost, grid_mat.max())
     if not min_cost:
         min_cost = grid_mat.min()
     cmap = plt.cm.terrain
     cmap.set_bad(color='black')
-    axes.set_xlim([0, grid.width]); axes.set_ylim([0, grid.height])
-    mat_out =  [axes.matshow(grid_mat.transpose(), interpolation='none', cmap=cmap, vmin=min_cost, vmax=max_cost)]
+    axes.set_xlim([grid.left, grid.right]); axes.set_ylim([grid.bottom, grid.top])
+    mat_out =  [axes.imshow(grid_mat.transpose(), origin='lower', extent=[grid.left,grid.right,grid.bottom,grid.top],
+        interpolation='none', cmap=cmap, vmin=min_cost, vmax=max_cost)]
     if not path == None:
         x, y = zip(*path)
         mat_out.append(axes.plot(x, y, 'w-', linewidth=2.0 )[0])
@@ -61,17 +62,17 @@ def draw_grid(axes, grid, path=None, max_cost = 0, min_cost = []):
 def draw_costmap(axes, grid, cost_to_come, path=[], start_nodes=None):
     cost_mat = -1*np.ones((grid.width, grid.height))
     for node in cost_to_come:
-        cost_mat[node[0],node[1]] = cost_to_come[node]
+        cost_mat[node[0]-grid.left,node[1]-grid.bottom] = cost_to_come[node]
     for x,y in grid.obstacles:
-        cost_mat[x,y] = -2
+        cost_mat[x-grid.left,y-grid.bottom] = -2
     cost_mat = np.ma.masked_where(cost_mat == -2, cost_mat)
     cmap = plt.cm.jet
     cmap.set_bad(color='black')
     cmap.set_over(color='#C2A366')
     cmap.set_under(color='0.8')
 
-    axes.set_xlim([0, grid.width]); axes.set_ylim([0, grid.height])
-    mat_out = [axes.matshow(cost_mat.transpose(), 
+    axes.set_xlim([grid.left, grid.right]); axes.set_ylim([grid.bottom, grid.top])
+    mat_out = [axes.imshow(cost_mat.transpose(), origin='lower', extent=[grid.left,grid.right,grid.bottom,grid.top],
         norm = matplotlib.colors.Normalize(vmin=0, vmax=cost_mat.max(), clip=False))]
     if start_nodes != None:
         mat_out.append(axes.plot(start_nodes[0], start_nodes[1],'r^', markersize=8 )[0])
@@ -85,20 +86,20 @@ def draw_costmap(axes, grid, cost_to_come, path=[], start_nodes=None):
 def draw_corridor(axes, grid, cost_to_come, corridor, interface=[], path=[]):
     cost_mat = -1*np.ones((grid.width, grid.height))
     for node in corridor:
-        cost_mat[node[0],node[1]] = cost_to_come[node]
+        cost_mat[node[0]-grid.left,node[1]-grid.bottom] = cost_to_come[node]
     for x,y in grid.obstacles:
-        cost_mat[x,y] = -2
+        cost_mat[x-grid.left,y-grid.bottom] = -2
     max_cost = cost_mat.max()
     for node in interface:
-        cost_mat[node[0],node[1]] = max_cost+1
+        cost_mat[node[0]-grid.left,node[1]-grid.bottom] = max_cost+1
     cost_mat = np.ma.masked_where(cost_mat == -2, cost_mat)
     cmap = plt.cm.jet
     cmap.set_bad(color='black')
     cmap.set_over(color='#C2A366')
     cmap.set_under(color='0.8')
 
-    axes.set_xlim([0, grid.width]); axes.set_ylim([0, grid.height])
-    mat_out = [axes.matshow(cost_mat.transpose(),
+    axes.set_xlim([grid.left, grid.right]); axes.set_ylim([grid.bottom, grid.top])
+    mat_out = [axes.imshow(cost_mat.transpose(), origin='lower',extent=[grid.left,grid.right,grid.bottom,grid.top],
         norm = matplotlib.colors.Normalize(vmin=0, vmax=max_cost, clip=False))]
     if len(path) > 0:
         x, y = zip(*path)
@@ -110,19 +111,20 @@ def draw_corridor(axes, grid, cost_to_come, corridor, interface=[], path=[]):
 
 def draw_fbfmcost(axes, grid, path_cost, path=[], min_cost = 1e7, max_cost = 0):
     grid_mat = np.zeros((grid.width, grid.height))
-    for x in range(grid.width):
-        for y in range(grid.height):
+    for x in range(grid.left, grid.right):
+        for y in range(grid.bottom, grid.top):
             if (x,y) in path_cost:
-                grid_mat[x,y] = path_cost[(x,y)]
+                grid_mat[x-grid.left,y-grid.bottom] = path_cost[(x,y)]
     for x,y in grid.obstacles:
-        grid_mat[x,y] = -1
+        grid_mat[x-grid.left,y-grid.bottom] = -1
     grid_mat = np.ma.masked_where(grid_mat == -1, grid_mat)
     cmap = plt.cm.jet
     cmap.set_bad(color='black')
-    axes.set_xlim([0, grid.width]); axes.set_ylim([0, grid.height])
+    axes.set_xlim([grid.left, grid.right]); axes.set_ylim([grid.bottom, grid.top])
     max_cost = max(max_cost, grid_mat.max())
     min_cost = min(min_cost, min(path_cost.values()))
-    mat_out =  [axes.matshow(grid_mat.transpose(), interpolation='none', cmap=cmap, vmax=max_cost, vmin=min_cost)]
+    mat_out =  [axes.imshow(grid_mat.transpose(), origin='lower', extent=[grid.left,grid.right,grid.bottom,grid.top],
+        interpolation='none', cmap=cmap, vmax=max_cost, vmin=min_cost)]
     if len(path) > 0:
         x, y = zip(*path)
         mat_out.append(axes.plot(x, y, 'w-', linewidth=2.0 )[0])

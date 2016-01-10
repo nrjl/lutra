@@ -5,6 +5,7 @@ import random
 import time
 import rospy
 import geodesy.utm
+from std_msgs.msg import Header
 from geographic_msgs.msg import GeoPose
 from sensor_msgs.msg import Range
 import fm_plottools
@@ -26,10 +27,10 @@ def sample_cost_fun(cf, x):
     y = cf(x[0], x[1]) + random.normalvariate(0, 0.25)
     return y
 
-def calc_true_path_cost(cost_fun, path, *args):
+def calc_true_path_cost(cost_fun, path, *args, **kwargs):
     true_cost = 0
     for i in range(len(path)):
-        true_cost += cost_fun(path[i][0], path[i][1], *args)
+        true_cost += cost_fun(path[i][0], path[i][1], *args, **kwargs)
     return true_cost
 
 def calc_est_path_cost(gp_model, mean_val, path):
@@ -60,40 +61,25 @@ class OperatingRegion:
                 
 class LutraFastMarchingExplorer:
 
-    def __init__(self, total_waypoints, n_samples, operating_region, GPm, mean_depth=0, fake_sonar=False):
+    def __init__(self, total_waypoints, n_samples, operating_region, GPm, mean_depth=0, fake_sonar=False, max_depth=20.0):
         print "Creating Lutra Fast Marching Explorer object"
-        
-        # ROS pub/subs
-        print "Setting up publishers and subscribers..."
-        self.wp_sub_ = rospy.Subscriber('/crw_waypoint_reached', GeoPose, self.waypoint_reached_callback)
-        self.pos_sub_ = rospy.Subscriber('/crw_geopose_pub', GeoPose, self.pose_callback)
-        self.depth_sub_ = rospy.Subscriber('/crw_sonar_pub', Range, self.sonar_callback)
-        self.wp_pub_ = rospy.Publisher('/crw_waypoint_sub', GeoPose, queue_size=10)
-        
-        self.sonar_time = rospy.Time.now()-rospy.Duration(10)
-        
-        # Fake sonar
-        self.fake_sonar = fake_sonar
-        if self.fake_sonar:
-            print "Setting up simulated sonar..."
-            self.depth_pub_ = rospy.Publisher('/crw_sonar_pub', Range, queue_size=10)
-            self.next_fakesonar = rospy.Time.now()
-            self.fake_sonar_msg = Range()
-            self.fake_sonar_msg.INFRARED = 0
-            self.fake_sonar_msg.min_range = 0.5
-            self.fake_sonar_msg.max_range = 100.0
-        
+        print "Total number of waypoints to be visited: {0}".format(total_waypoints)
+        print "Number of random samples: {0}".format(n_samples)
+        print "Max depth for min graph cost: {0}".format(max_depth)
+        print "Fake sonar activated: {0}".format(fake_sonar)
+                
         # FM search area
         self.n_samples = n_samples
         self.total_waypoints = total_waypoints
         self.operating_region = operating_region
-        self.start_node = self.operating_region.start_node[0]
-        self.goal_node = self.operating_region.goal_node[1]
+        self.start_node = self.operating_region.start_node
+        self.goal_node = self.operating_region.goal_node
         self.gridsize = [self.operating_region.width, self.operating_region.height]
         
         # GP
         self.GPm = GPm
         self.mean_depth = mean_depth
+        self.max_depth = max_depth
         self.delta_costs = [-1, 1]
         
         self.num_visited = 0
@@ -101,8 +87,13 @@ class LutraFastMarchingExplorer:
         
         print "Setting up truth FM graph..."
         self.true_g = fm_graphtools.CostmapGridFixedObs(self.gridsize[0], self.gridsize[1], 
-            self.GP_cost_function, obstacles=self.operating_region.obstacles, bl_corner=[self.operating_region.left, self.operating_region.bottom])
-        explorer_cost = bfm_explorer.mat_cost_function(self.true_g, self.GP_cost_function)
+            obstacles=self.operating_region.obstacles, 
+            bl_corner=[self.operating_region.left, self.operating_region.bottom])
+        explorer_cost = bfm_explorer.mat_cost_function_GP(self.true_g, 
+            cost_fun=bfm_explorer.GP_cost_function,
+            GPm = self.GPm,
+            max_depth=self.max_depth, 
+            mean_depth=mean_depth)
         self.true_g.cost_fun = explorer_cost.calc_cost
         
         # Search over true field
@@ -112,7 +103,11 @@ class LutraFastMarchingExplorer:
         tFM.search()
         tFM.pull_path()
         self.best_path = tFM.path
-        self.best_path_cost = calc_true_path_cost(self.GP_cost_function, self.best_path)
+        self.best_path_cost = calc_true_path_cost(bfm_explorer.GP_cost_function, 
+            self.best_path,
+            GPm = self.GPm,
+            max_depth=self.max_depth, 
+            mean_depth=self.mean_depth)
 
         # Plots
         self.fig, self.ax = plt.subplots(1, 2, sharex=True, sharey=True)
@@ -131,6 +126,25 @@ class LutraFastMarchingExplorer:
         self.best_cost_plot=[]
         self.cost_plot_matrix=[]
         self.video_frames = []
+        
+        # ROS pub/subs
+        print "Setting up publishers and subscribers..."
+        self.wp_sub_ = rospy.Subscriber('/crw_waypoint_reached', GeoPose, self.waypoint_reached_callback)
+        self.pos_sub_ = rospy.Subscriber('/crw_geopose_pub', GeoPose, self.pose_callback)
+        self.depth_sub_ = rospy.Subscriber('/crw_sonar_pub', Range, self.sonar_callback)
+        self.wp_pub_ = rospy.Publisher('/crw_waypoint_sub', GeoPose, queue_size=10)
+        
+        self.sonar_time = rospy.Time.now()-rospy.Duration(10)
+        
+        # Fake sonar
+        self.fake_sonar = fake_sonar
+        if self.fake_sonar:
+            print "Setting up simulated sonar..."
+            self.depth_pub_ = rospy.Publisher('/crw_sonar_pub', Range, queue_size=10)
+            self.next_fakesonar = rospy.Time.now()
+            newhead = Header(seq = 0, stamp = rospy.Time.now(), frame_id='sonar')
+            self.fake_sonar_msg = Range(header=newhead,min_range=0.5, max_range=100.0)
+                
         print "Setup complete, waiting for first waypoint. The next waypoint reached "
         print "will be assumed to represent the local origin of the search area."
 
@@ -154,9 +168,10 @@ class LutraFastMarchingExplorer:
         return out_pose
 
     def previously_sampled(self, point):
-        for ii in range(self.fm_sampling_explorer.X.shape[0]):
-            if np.sqrt(((self.fm_sampling_explorer.X[ii,:] - point)**2).sum()) < SAMPLE_RANGE:
-                return True
+        if self.num_visited >= 1:
+            for ii in range(self.fm_sampling_explorer.X.shape[0]):
+                if np.sqrt(((self.fm_sampling_explorer.X[ii,:] - point)**2).sum()) < SAMPLE_RANGE:
+                    return True
         return False
         
     def create_random_samples(self):
@@ -179,22 +194,26 @@ class LutraFastMarchingExplorer:
         self.cpose_ = msg.position
         self.cquat_ = msg.orientation
         
-        if self.fake_sonar and rospy.Time.now() > self.next_fakesonar:
+        if self.num_visited > 0 and self.fake_sonar and rospy.Time.now() > self.next_fakesonar:
             self.next_fakesonar = rospy.Time.now() + rospy.Duration(1.0)
             pp = geodesy.utm.fromMsg(self.cpose_)
             clocalpos = self.get_local_coords(pp)
             depth = self.GPm.predict([clocalpos])
             self.fake_sonar_msg.range = depth
+            self.fake_sonar_msg.header.seq += 1 
             self.depth_pub_.publish(self.fake_sonar_msg)
-        
-    def GP_cost_function(self, x, y):
-        return self.GPm.predict([[x,y]])
                 
     def waypoint_reached_callback(self, msg):
         print "Waypoint {0} reached.".format(self.num_visited)
         self.cgeopose_ = msg
         self.cpose_ = msg.position
         self.cquat_ = msg.orientation
+        pp = geodesy.utm.fromMsg(self.cpose_)
+        
+        if self.num_visited == 0:
+            print "Waypoint 0: defining local origin."
+            self.zero_utm = pp
+        self.num_visited += 1
         
         # Wait for valid/recent sonar data
         waiter = True
@@ -205,9 +224,6 @@ class LutraFastMarchingExplorer:
             time.sleep(0.1)
         print "Sonar data recorded, depth = {0}m".format(self.sonar_depth)
         
-        pp = geodesy.utm.fromMsg(self.cpose_)
-        self.num_visited += 1
-
         # Current position in world frame 
         cX = self.get_local_coords(pp)
         
@@ -215,15 +231,20 @@ class LutraFastMarchingExplorer:
         #cX = np.array([clocalpos[0]-self.origin_offset[0], clocalpos[1]-self.origin_offset[1]])
         
         if self.num_visited <= 1:
-            print "Arrived at first waypoint, creating fast march explorer."
-            self.zero_utm = pp
-            
             # Initial sample set
             X = np.array([cX])
             Y = np.zeros((1, 1))
             Y[0] = self.sonar_depth
             self.fm_sampling_explorer = bfm_explorer.fast_marching_explorer(self.gridsize, 
-                self.start_node, self.goal_node, X, Y, self.GPmean, self.true_g.obstacles)
+                self.start_node, self.goal_node, X, Y, 
+                obs=self.true_g.obstacles, 
+                mean_value=self.GPmean, 
+                GP_l=self.GPm.kern.lengthscale[0], 
+                GP_sv=self.GPm.kern.variance[0], 
+                GP_sn=self.GPm.Gaussian_noise.variance[0],
+                max_depth=self.max_depth, 
+                mean_depth=self.mean_depth
+                )
 
         elif self.num_visited == self.total_waypoints:
             print "Arrived at final waypoint, saving data."
@@ -283,19 +304,24 @@ class LutraFastMarchingExplorer:
 
 if __name__ == '__main__':
 
-    V_Ireland = np.array([[0,0], [-43,-38],[-70,-94], [-60,-150],[0,-180],[54,-152],[85,-70],[0,0]])
-    start_node = np.array([0,-2])
-    goal_node = np.array([-30,-150])
     rospy.init_node('fm_explorer', anonymous=False)
-    nwaypoints = rospy.get_param('/explorer_waypoints', 51)
-    nsamp = rospy.get_param('/explorer_samples', 100)
+    
+    nwaypoints = rospy.get_param('~explorer_waypoints', 51)
+    nsamp = rospy.get_param('~explorer_samples', 100)
+    max_depth = rospy.get_param('~max_depth', 20.0)
+    fake_sonar = rospy.get_param('~fake_sonar', False)
+    
+    V_Ireland = np.array([[0,0], [-43,-38],[-70,-94], [-60,-150],[0,-180],[54,-152],[85,-70],[0,0]])
+    start_node = (0,-2)
+    goal_node = (-30,-150)
     model_file = os.path.expanduser("~")+'/catkin_ws/src/ros_lutra/data/IrelandLnModel.pkl'
     fh = open(model_file, 'rb')
     GP_model = pickle.load(fh)
     mean_depth = pickle.load(fh)
     fh.close()
     op_region = OperatingRegion(V_Ireland, start_node, goal_node)
-    
-    fake_sonar = rospy.get_param('/fake_sonar', False)
-    fmex = LutraFastMarchingExplorer(nwaypoints, nsamp, op_region, GP_model, mean_depth, fake_sonar=fake_sonar)
+    fmex = LutraFastMarchingExplorer(nwaypoints, nsamp, op_region, GP_model, 
+        mean_depth=mean_depth, 
+        max_depth=max_depth,
+        fake_sonar=fake_sonar)
     rospy.spin()

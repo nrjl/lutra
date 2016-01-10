@@ -134,7 +134,7 @@ class FastMarcher:
         path = [target]
         current_node = target
         while math.sqrt((current_node[0]-source[0])**2 + 
-        (current_node[1]-source[1])**2) > 2*self.step_dist:
+        (current_node[1]-source[1])**2) > 1+2*self.step_dist:
             if current_node in self.cost_to_come:
                 grad = self.local_gradient(current_node)
             else:
@@ -542,12 +542,12 @@ class FullBiFastMarcher:
         
     def set_start(self, node):
         self.FastMarcherSG.set_start(node)
-        self.FastMarcherSG.set_goal((-1,-1))
+        self.FastMarcherSG.set_goal((None,None))
         self.start_node = node
         
     def set_goal(self, node):
         self.FastMarcherGS.set_start(node)
-        self.FastMarcherGS.set_goal((-1,-1))
+        self.FastMarcherGS.set_goal((None,None))
         self.end_node = node
         
     def set_plots(self, imf, ax):
@@ -572,13 +572,14 @@ class FullBiFastMarcher:
         self.FastMarcherSG.set_goal(self.FastMarcherGS.start_node)
         self.min_path_cost = self.FastMarcherSG.cost_to_come[self.end_node]
             
-    def pull_path(self):
-        self.FastMarcherSG.pull_path();
-        self.path = self.FastMarcherSG.path;
+    def pull_path(self, step=0.21):
+        self.FastMarcherSG.step_dist = step
+        self.FastMarcherSG.pull_path()
+        self.path = self.FastMarcherSG.path
 
     def find_corridor(self):
-        self.FastMarcherSG.find_corridor();
-        self.corridor = self.FastMarcherSG.corridor;
+        self.FastMarcherSG.find_corridor()
+        self.corridor = self.FastMarcherSG.corridor
                 
     def update(self, new_cost, recalc_path = 0):
         # New cost should be added as a dictionary, with elements  [(node) : delta_cost]

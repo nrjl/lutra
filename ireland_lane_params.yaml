@@ -1,0 +1,4 @@
+explorer_waypoints: 51
+explorer_samples: 100
+max_depth: 4.5
+fake_sonar: true
