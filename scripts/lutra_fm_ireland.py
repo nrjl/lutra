@@ -194,14 +194,15 @@ class LutraFastMarchingExplorer:
         self.cpose_ = msg.position
         self.cquat_ = msg.orientation
         
-        if self.num_visited > 0 and self.fake_sonar and rospy.Time.now() > self.next_fakesonar:
-            self.next_fakesonar = rospy.Time.now() + rospy.Duration(1.0)
+        if hasattr(self, 'zero_utm') and self.fake_sonar and rospy.Time.now() > self.next_fakesonar:
             pp = geodesy.utm.fromMsg(self.cpose_)
             clocalpos = self.get_local_coords(pp)
             depth = self.GPm.predict([clocalpos])
             self.fake_sonar_msg.range = depth
             self.fake_sonar_msg.header.seq += 1 
             self.depth_pub_.publish(self.fake_sonar_msg)
+            self.next_fakesonar = rospy.Time.now() + rospy.Duration(1.0)
+            
                 
     def waypoint_reached_callback(self, msg):
         print "Waypoint {0} reached.".format(self.num_visited)
