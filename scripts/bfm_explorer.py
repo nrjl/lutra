@@ -23,11 +23,15 @@ class mat_cost_function_GP:
         lx = np.arange(graph.left, graph.right, dtype='int')
         ly = np.arange(graph.bottom, graph.top, dtype='int')
         X_star = np.array([[x,y] for x in lx for y in ly])
-        Y_star = cost_fun(X_star[:,0], X_star[:,1],*args, **kwargs)
-        self.cost_dict = {(X_star[k,0],X_star[k,1]):Y_star[k,0] for k in range(len(Y_star))}
+        Y_star,Y_var = cost_fun(X_star[:,0], X_star[:,1],*args, **kwargs)
+        self.cost_dict = {(X_star[k,0],X_star[k,1]):Y_star[k,0] for k in range(Y_star.shape[0])}
+        self.var_dict  = {(X_star[k,0],X_star[k,1]):Y_var[k,0]  for k in range(Y_var.shape[0])}
     
     def calc_cost(self,a,b):
         return self.cost_dict[(a,b)]
+        
+    def calc_var(self,a,b):
+        return self.var_dict[(a,b)]
 
 def GP_cost_function(x, y, GPm, max_depth=1.0e3, mean_depth=0.0):
     # Cost function shold be strictly positive (depth < 10)
@@ -36,12 +40,12 @@ def GP_cost_function(x, y, GPm, max_depth=1.0e3, mean_depth=0.0):
     mean = max_depth-(mean+mean_depth)
     mean[mean < 0.1] = 0.1
     if len(mean) == 1:
-        return mean[0]
+        return mean[0],var[0]
     else:
-        return mean
+        return mean,var
             
 class fast_marching_explorer:
-    def __init__(self, gridsize, start_node, end_node, X, Y, mean_value=0, obs=[], GP_l=14.0,GP_sv=45.0,GP_sn=1.0,*args,**kwargs):
+    def __init__(self, gridsize, start_node, end_node, X, Y, mean_value=0, obs=[], GP_l=14.0,GP_sv=45.0,GP_sn=1.0,bl_corner=[0,0],*args,**kwargs):
         self.start_node = start_node
         self.end_node = end_node
         
@@ -57,10 +61,11 @@ class fast_marching_explorer:
         # create cost graph from the GP estimate
         self.GP_cost_args = args
         self.GP_cost_kwargs = kwargs        
-        self.GP_cost_graph = fm_graphtools.CostmapGridFixedObs(gridsize[0], gridsize[1], obstacles=obs)
+        self.GP_cost_graph = fm_graphtools.CostmapGridFixedObs(gridsize[0], gridsize[1], obstacles=obs, bl_corner=bl_corner)
         self.cmodel = mat_cost_function_GP(self.GP_cost_graph, 
-            cost_fun=GP_cost_function, *self.GP_cost_args, **self.GP_cost_kwargs)
+            cost_fun=GP_cost_function, GPm=self.GP_model, *self.GP_cost_args, **self.GP_cost_kwargs)
         self.GP_cost_graph.cost_fun = self.cmodel.calc_cost
+        self.GP_cost_graph.var_fun = self.cmodel.calc_var
                 
         #Xtemp, Ytemp = np.meshgrid(np.arange(self.GP_cost_graph.width), np.arange(self.GP_cost_graph.height))
         #self.Xfull = np.vstack([Xtemp.ravel(), Ytemp.ravel()]).transpose()
@@ -89,8 +94,9 @@ class fast_marching_explorer:
         self.GP_model.set_XY(self.X, self.Y-self.mean_value)
         
         self.cmodel = mat_cost_function_GP(self.GP_cost_graph, 
-            cost_fun=GP_cost_function, *self.GP_cost_args, **self.GP_cost_kwargs)
+            cost_fun=GP_cost_function, GPm=self.GP_model, *self.GP_cost_args, **self.GP_cost_kwargs)
         self.GP_cost_graph.cost_fun = self.cmodel.calc_cost
+        self.GP_cost_graph.var_fun = self.cmodel.calc_var
 
         self.GP_cost_graph.clear_delta_costs()
         

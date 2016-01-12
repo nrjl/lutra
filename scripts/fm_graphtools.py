@@ -44,7 +44,31 @@ def polynomial_cost_modifier(graph, cx, cy, r, delta):
                 kd = delta*( max(0,(1-dd))**(j+1)*((j+1)*dd + 1) )
                 if kd != 0: cost_dict[(x,y)] = kd
     return cost_dict
-
+    
+class polynomial_precompute_cost_modifier:
+    def __init__(self, graph, r):
+        self.graph = graph
+        self.r = r
+        q = 1
+        D = 2
+        self.j = D/2+q+1
+        self.build_dict()
+        
+    def build_dict(self):
+        self.cost_dict={}
+        for x in range(-self.r, self.r):
+            for y in range(-self.r, self.r):
+                dd = min(1, math.sqrt(x**2 + y**2)/self.r)
+                kd = 1.0*( max(0,(1-dd))**(self.j+1)*((self.j+1)*dd + 1) )
+                if kd != 0: self.cost_dict[(x,y)] = kd
+                
+    def calc_cost(self, cx, cy, delta):
+        out_cost = {(x+cx,y+cy):delta*self.cost_dict[(x,y)] for (x,y) in self.cost_dict 
+            if x+cx >= self.graph.left and x+cx < self.graph.right and
+                y+cy >= self.graph.bottom and y+cy < self.graph.top and
+                (x+cx,y+cy) not in self.graph.obstacles}
+        return out_cost
+        
 class poly_cost:
     def __init__(self, graph, r):
         q = 1; D = 2

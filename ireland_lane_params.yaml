@@ -1,4 +1,6 @@
 explorer_waypoints: 51
-explorer_samples: 100
+explorer_samples: 50
 max_depth: 4.5
 fake_sonar: true
+home_lat: 44.563483
+home_lon: -123.248778

@@ -35,7 +35,7 @@ def generate_obstacles(width, height, num_obstacles, max_size=None):
         obs_list.extend([(a, b) for a in range(x, x+sx) for b in range(y, y+sy)])
     return obs_list
             
-def draw_grid(axes, grid, path=None, max_cost = 0, min_cost = []):
+def draw_grid(axes, grid, path=None, max_cost = 0, min_cost = [], *args, **kwargs):
     grid_mat = np.zeros((grid.width, grid.height))
     for x in range(grid.width):
         for y in range(grid.height):
@@ -50,7 +50,7 @@ def draw_grid(axes, grid, path=None, max_cost = 0, min_cost = []):
     cmap.set_bad(color='black')
     axes.set_xlim([grid.left, grid.right]); axes.set_ylim([grid.bottom, grid.top])
     mat_out =  [axes.imshow(grid_mat.transpose(), origin='lower', extent=[grid.left,grid.right,grid.bottom,grid.top],
-        interpolation='none', cmap=cmap, vmin=min_cost, vmax=max_cost)]
+        interpolation='none', cmap=cmap, vmin=min_cost, vmax=max_cost, *args, **kwargs)]
     if not path == None:
         x, y = zip(*path)
         mat_out.append(axes.plot(x, y, 'w-', linewidth=2.0 )[0])
