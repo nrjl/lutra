@@ -134,7 +134,7 @@ class FastMarcher:
         path = [target]
         current_node = target
         while math.sqrt((current_node[0]-source[0])**2 + 
-        (current_node[1]-source[1])**2) > 1+2*self.step_dist:
+        (current_node[1]-source[1])**2) > 3+2*self.step_dist:
             if current_node in self.cost_to_come:
                 grad = self.local_gradient(current_node)
             else:

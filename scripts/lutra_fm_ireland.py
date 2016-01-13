@@ -30,16 +30,8 @@ def sample_cost_fun(cf, x):
     return y
 
 def calc_true_path_cost(cost_fun, path, *args, **kwargs):
-    true_cost = 0
-    for i in range(len(path)):
-        # Note the [0] index is because the GP cost function also returns variance
-        true_cost += cost_fun(path[i][0], path[i][1], *args, **kwargs)[0]
-    return true_cost
-
-def calc_est_path_cost(gp_model, mean_val, path):
-    true_cost,var_cost = gp_model.predict(np.asarray(path))
-    true_cost += mean_val
-    return true_cost.sum(), var_cost.sum()
+    true_cost,true_var = cost_fun(path[:,0], path[:,1], *args, **kwargs)
+    return true_cost.sum()
 
 class OperatingRegion:
     def __init__(self, V, start_node, goal_node):
@@ -70,7 +62,7 @@ class LutraFastMarchingExplorer:
         print "Number of random samples: {0}".format(n_samples)
         print "Max depth for min graph cost: {0}".format(max_depth)
         print "Fake sonar activated: {0}".format(fake_sonar)
-                
+        
         # FM search area
         self.n_samples = n_samples
         self.total_waypoints = total_waypoints
@@ -78,12 +70,13 @@ class LutraFastMarchingExplorer:
         self.start_node = self.operating_region.start_node
         self.goal_node = self.operating_region.goal_node
         self.gridsize = [self.operating_region.width, self.operating_region.height]
+        self.observations = np.zeros((n_samples, 6)) # Time, lat, lon, x, y, depth
         
         # GP
         self.GPm = GPm
         self.mean_depth = mean_depth
         self.max_depth = max_depth
-        self.delta_costs = [-1, 1]
+        self.delta_costs = [-2, 1]
         
         self.num_visited = 0
         self.nowstr = time.strftime("%Y_%m_%d-%H_%M")
@@ -111,7 +104,7 @@ class LutraFastMarchingExplorer:
         self.best_path = tFM.path
         print "Calculating best cost cost over true field..."
         self.best_path_cost = calc_true_path_cost(bfm_explorer.GP_cost_function, 
-            self.best_path,
+            np.array(self.best_path),
             GPm = self.GPm,
             max_depth=self.max_depth, 
             mean_depth=self.mean_depth)
@@ -251,6 +244,9 @@ class LutraFastMarchingExplorer:
         # Current position in world frame 
         cX = self.get_local_coords(pp)
         print "Current local position: {0}, {1}".format(cX[0], cX[1])
+        self.observations[self.num_visited-1,:] = np.array(
+            [rospy.Time.now().secs, self.cpose_.latitude, self.cpose_.longitude,
+            cX[0], cX[1], self.sonar_depth])
         
         # Current position in grid frame
         #cX = np.array([clocalpos[0]-self.origin_offset[0], clocalpos[1]-self.origin_offset[1]])
@@ -272,7 +268,7 @@ class LutraFastMarchingExplorer:
                 bl_corner=[self.operating_region.left, self.operating_region.bottom]
                 )
             self.fm_sampling_explorer.search()
-            self.poly_cost = fm_graphtools.polynomial_precompute_cost_modifier(self.true_g, 15)
+            self.poly_cost = fm_graphtools.polynomial_precompute_cost_modifier(self.true_g, 18)
                 
 
         elif self.num_visited == self.total_waypoints:
@@ -280,6 +276,7 @@ class LutraFastMarchingExplorer:
             fh = open('lutra_fastmarchlog_'+self.nowstr+'.p', 'wb')
             pickle.dump(self.fm_sampling_explorer.X, fh)
             pickle.dump(self.fm_sampling_explorer.Y, fh)
+            pickle.dump(self.observations, fh)
             fh.close()
             self.plot_current_path(self.get_local_coords(pp))
             try:
@@ -302,7 +299,7 @@ class LutraFastMarchingExplorer:
 
         # Find next sample point
         fm_best_cost = -1
-
+        tsample = time.time()
         for ii in range(self.sample_locations.shape[0]):
             [tx,ty] = self.sample_locations[ii]
             #print self.fm_sampling_explorer.cmodel.var_dict
@@ -310,15 +307,19 @@ class LutraFastMarchingExplorer:
             if  ((tx,ty) not in self.true_g.obstacles) and not self.previously_sampled([tx,ty]):
                 current_value = 0
                 for td in self.delta_costs:
-                    stdY = math.sqrt(self.fm_sampling_explorer.GP_cost_graph.var_fun(tx,ty) )
+                    stdY = self.fm_sampling_explorer.GP_cost_graph.var_fun(tx,ty) #math.sqrt()
                     cost_update =self.poly_cost.calc_cost(tx, ty, td*stdY)
-                    current_value += self.fm_sampling_explorer.cost_update(cost_update)
+                    current_value += self.fm_sampling_explorer.cost_update_new(cost_update)
                 if fm_best_cost == -1 or (current_value < fm_best_cost):
                     fm_best_cost = current_value
                     fm_bestX = [tx,ty]
+                    fm_bestVar = stdY
+                    fm_besti = ii
+        print "Finding best sample took {0:0.2f}s.".format(time.time()-tsample)
         self.plot_current_path(fm_bestX)
         target_utm = self.get_utm_coords(fm_bestX)
-        print "Next target point selected: E = {0}m, N = {1}m.".format(fm_bestX[0], fm_bestX[1])
+        print "Next target point selected: E = {0}m, N = {1}m (c={2:0.3f}, std={3:0.3f}, i={4}).".format(
+            fm_bestX[0], fm_bestX[1], fm_best_cost, fm_bestVar,fm_besti)
         self.pub_point(target_utm)
         self.create_random_samples()
 
@@ -329,18 +330,27 @@ class LutraFastMarchingExplorer:
 
     def plot_current_path(self, nexttarget):
         graph_frame = []
+        c_best_cost = calc_true_path_cost(bfm_explorer.GP_cost_function, 
+            np.array(self.fm_sampling_explorer.fbFM.path),
+            GPm = self.GPm,
+            max_depth=self.max_depth, 
+            mean_depth=self.mean_depth)
         if not self.best_cost_plot:
-            self.best_cost_plot, barlims = fm_plottools.draw_grid(self.ax[0], self.true_g, self.best_path, max_cost=self.max_depth, alpha=self.cost_alpha)
+            self.best_cost_plot, barlims = fm_plottools.draw_grid(self.ax[0], self.true_g, path=self.best_path, 
+                min_cost=0.0, max_cost=self.max_depth, alpha=self.cost_alpha)
             graph_frame.extend(self.best_cost_plot)
+            self.ax[0].text(self.true_g.left, self.true_g.bottom-10, "Best path cost = {0:0.3f}".format(self.best_path_cost),color='w')
+            self.text1 = self.ax[1].text(self.true_g.left, self.true_g.bottom-10, "Current path cost = {0:0.3f}".format(c_best_cost),color='w')
         while self.ax[1].lines:
             self.ax[1].lines.pop()
         while self.ax[1].images:
             self.ax[1].images.pop()
+        self.text1.set_text("Current path cost = {0:0.3f}".format(c_best_cost))
         if pond_image:
             self.ax[1].imshow(self.pond, extent = (self.pond_bl[0],self.pond_tr[0],self.pond_bl[1],self.pond_tr[1]))    
         self.cost_plot_matrix, barlims = fm_plottools.draw_grid(self.ax[1], 
             self.fm_sampling_explorer.GP_cost_graph, self.fm_sampling_explorer.fbFM.path, 
-            max_cost=self.max_depth, alpha=self.cost_alpha)
+            max_cost=self.max_depth, min_cost=0.0, alpha=self.cost_alpha)
         for axx in self.ax:
             axx.set_xlim([self.true_g.left-20, self.true_g.right+20])
             axx.set_ylim([self.true_g.bottom-20, self.true_g.top+20])
@@ -348,21 +358,24 @@ class LutraFastMarchingExplorer:
         self.cost_plot_matrix.append(self.ax[1].plot(nexttarget[0], nexttarget[1], 'bo')[0])
         graph_frame.extend(self.cost_plot_matrix)
         self.video_frames.append(graph_frame)
-        self.fig.savefig('fm_explorer_{0}_S{1:02d}.pdf'.format(self.nowstr, self.num_visited-1), bbox_inches='tight')
+        try:
+            self.fig.savefig('fm_explorer_{0}_S{1:02d}.pdf'.format(self.nowstr, self.num_visited-1), bbox_inches='tight')
+        except:
+            print "Save figure failed, continuing search."
         # plt.draw()
 
 if __name__ == '__main__':
 
     rospy.init_node('fm_explorer', anonymous=False)
     
-    nwaypoints = rospy.get_param('~explorer_waypoints', 51)
+    nwaypoints = rospy.get_param('~explorer_waypoints', 31)
     nsamp = rospy.get_param('~explorer_samples', 100)
-    max_depth = rospy.get_param('~max_depth', 20.0)
+    max_depth = rospy.get_param('~max_depth', 10.0)
     fake_sonar = rospy.get_param('~fake_sonar', False)
     
-    V_Ireland = np.array([[0,0], [-43,-38],[-70,-94], [-60,-150],[0,-180],[54,-152],[85,-70],[0,0]])
+    V_Ireland = np.array([[0,0], [-43,-38],[-70,-94], [-60,-170],[0,-180],[54,-152],[85,-70],[0,0]])
     start_node = (0,-2)
-    goal_node = (-30,-150)
+    goal_node = (-30,-160)
     model_file = os.path.expanduser("~")+'/catkin_ws/src/ros_lutra/data/IrelandLnModel.pkl'
     fh = open(model_file, 'rb')
     GP_model = pickle.load(fh)

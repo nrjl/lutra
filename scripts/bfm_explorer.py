@@ -34,7 +34,7 @@ class mat_cost_function_GP:
         return self.var_dict[(a,b)]
 
 def GP_cost_function(x, y, GPm, max_depth=1.0e3, mean_depth=0.0):
-    # Cost function shold be strictly positive (depth < 10)
+    # Cost function shold be strictly positive (depth < max_depth)
     X = np.array([np.ravel(x), np.ravel(y)]).transpose()
     mean,var = GPm.predict(X)
     mean = max_depth-(mean+mean_depth)
