@@ -89,8 +89,8 @@ class fast_marching_explorer:
         return self.fbFM.updated_min_path_cost
         
     def add_observation(self, Xnew, Ynew):
-        self.X = np.append(self.X, [Xnew], axis=0)
-        self.Y = np.append(self.Y, [[Ynew]], axis=0)
+        self.X = np.append(self.X, Xnew, axis=0)
+        self.Y = np.append(self.Y, Ynew, axis=0)
         self.GP_model.set_XY(self.X, self.Y-self.mean_value)
         
         self.cmodel = mat_cost_function_GP(self.GP_cost_graph, 

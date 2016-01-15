@@ -3,15 +3,16 @@ import math
 import numpy as np
 import rospy
 import geodesy.utm
-from geographic_msgs.msg import GeoPose
+from geographic_msgs.msg import GeoPose, GeoPoint
 from sensor_msgs.msg import Temperature, Range
 import copy
 import cPickle as pickle
+import os
 
 
 class LutraBagReader:
 
-    def __init__(self, offpos=[0.0,0.0]):
+    def __init__(self, offpos=[0.0,0.0], pond_image=None):
         print "Creating Lutra Bag Reader"
         self.pose_sub_ = rospy.Subscriber('/crw_geopose_pub', GeoPose, self.pose_callback)
         self.temp_sub_ = rospy.Subscriber('/crw_temp_pub', Temperature, self.temp_callback)
@@ -19,6 +20,12 @@ class LutraBagReader:
         self.poses = np.array([])
         self.sonar = np.array([])
         self.temps = np.array([])
+        if pond_image != None:
+            pond_locations = np.genfromtxt(pond_image+'.csv', delimiter=',')
+            pond_origin = GeoPoint(pond_locations[2,0],pond_locations[2,1],pond_locations[2,2])
+            self.zero_utm = geodesy.utm.fromMsg(pond_origin)
+            print "Origin specified at lat={0}, lon={1}".format(pond_origin.latitude, pond_origin.longitude)
+            
 
         self.start_time = 0
         self.offpos = offpos
@@ -51,12 +58,15 @@ class LutraBagReader:
         tnow = rospy.get_time()
                 
         if not self.poses.size:
-            print "First pose record, initialising origin at ({0},{1}).".format(msg.position.latitude, msg.position.longitude)
-            origin = copy.copy(pp)
-            origin.easting -= self.offpos[0]
-            origin.northing -= self.offpos[1]
-            self.zero_utm = origin
             self.start_time = tnow
+            print "First pose record."
+            if not hasattr(self, 'zero_utm'):
+                print "Initialising origin at ({0},{1}).".format(msg.position.latitude, msg.position.longitude)
+                origin = copy.copy(pp)
+                origin.easting -= self.offpos[0]
+                origin.northing -= self.offpos[1]
+                self.zero_utm = origin
+            
             
         self.add_pose(msg)
             
@@ -94,8 +104,11 @@ class LutraBagReader:
         #print "Temperature observation value: {0} at time: {1}".format(msg.temperature, ctime)
 
 if __name__ == '__main__':
+    
+    pond_image = os.path.expanduser("~")+'/catkin_ws/src/ros_lutra/data/ireland_lane_pond'
+    
     rospy.init_node('lutra_bag_reader', anonymous=False)
     while not rospy.is_shutdown():
-        fmex = LutraBagReader(offpos=[0.0, 0.0])
+        fmex = LutraBagReader(pond_image=pond_image)
         rospy.spin()
     fmex.save_output()

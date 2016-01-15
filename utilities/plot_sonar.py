@@ -26,7 +26,7 @@ X = sonar[dd,1:3]
 y = np.atleast_2d(sonar[dd,3]).transpose()
 ymean = y.mean()
     
-model_file = home_dir+'/catkin_ws/src/ros_lutra/data/IrelandLnModel.pkl'
+model_file = home_dir+'/catkin_ws/src/ros_lutra/data/IrelandLnModel2.pkl'
 
 if REBUILD_MODEL or not os.path.isfile(model_file):
     print "Building GP model..."

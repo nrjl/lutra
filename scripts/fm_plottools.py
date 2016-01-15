@@ -35,11 +35,13 @@ def generate_obstacles(width, height, num_obstacles, max_size=None):
         obs_list.extend([(a, b) for a in range(x, x+sx) for b in range(y, y+sy)])
     return obs_list
             
-def draw_grid(axes, grid, path=None, max_cost = 0, min_cost = None, *args, **kwargs):
+def draw_grid(axes, grid, path=None, max_cost = 0, min_cost = None, cost_fun=None, *args, **kwargs):
+    if cost_fun == None:
+        cost_fun = grid.node_cost
     grid_mat = np.zeros((grid.width, grid.height))
     for x in range(grid.width):
         for y in range(grid.height):
-            grid_mat[x,y] = grid.node_cost((grid.left+x, grid.bottom+y))
+            grid_mat[x,y] = cost_fun((grid.left+x, grid.bottom+y))
     for x,y in grid.obstacles:
         grid_mat[x-grid.left,y-grid.bottom] = -1
     grid_mat = np.ma.masked_where(grid_mat == -1, grid_mat)

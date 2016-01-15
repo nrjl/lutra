@@ -46,9 +46,10 @@ def polynomial_cost_modifier(graph, cx, cy, r, delta):
     return cost_dict
     
 class polynomial_precompute_cost_modifier:
-    def __init__(self, graph, r):
+    def __init__(self, graph, r, min_val=0):
         self.graph = graph
         self.r = r
+        self.min_val = min_val
         q = 1
         D = 2
         self.j = D/2+q+1
@@ -60,7 +61,7 @@ class polynomial_precompute_cost_modifier:
             for y in range(-self.r, self.r):
                 dd = min(1, math.sqrt(x**2 + y**2)/self.r)
                 kd = 1.0*( max(0,(1-dd))**(self.j+1)*((self.j+1)*dd + 1) )
-                if kd != 0: self.cost_dict[(x,y)] = kd
+                if kd > self.min_val: self.cost_dict[(x,y)] = kd
                 
     def calc_cost(self, cx, cy, delta):
         out_cost = {(x+cx,y+cy):delta*self.cost_dict[(x,y)] for (x,y) in self.cost_dict 
