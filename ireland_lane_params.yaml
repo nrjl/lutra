@@ -2,3 +2,5 @@ explorer_waypoints: 31
 explorer_samples: 75
 max_depth: 4.8
 fake_sonar: true
+continous_sonar: false
+swath_samples: false

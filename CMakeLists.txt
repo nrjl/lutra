@@ -10,12 +10,13 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   geodesy
+  visualization_msgs
 )
 
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES lutra
-  CATKIN_DEPENDS geographic_msgs geometry_msgs rospy std_msgs geodesy
+  CATKIN_DEPENDS geographic_msgs geometry_msgs rospy std_msgs geodesy visualization_msgs
 #  DEPENDS system_lib
 )
 

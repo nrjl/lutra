@@ -2,6 +2,7 @@
 
 import time
 import rospy
+import matplotlib.pyplot as plt
 import geodesy.utm
 from geographic_msgs.msg import GeoPose
 # from geographic_msgs.msg import GeoPoint
@@ -61,6 +62,9 @@ class WaypointBoxPublisher:
         self.clear_pub_.publish("clear")    
 
 if __name__ == '__main__':
+    fig,ax = plt.subplots(1, 3, sharex=True, sharey=True)
+    fig.set_size_inches(15, 5)
+    plt.draw()
     boxer = WaypointBoxPublisher()
     try:
         boxer.input_loop()
