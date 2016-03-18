@@ -1,0 +1,3 @@
+max_sonar_points: 100
+sonar_marker_timeout: 60.0
+fake_sonar_freq: 1.0

@@ -1,5 +1,5 @@
 <launch>
-    <node pkg="tf" type="static_transform_publisher" name="sonar_broadcaster" args="-0.2 0.0 -0.17 0.0 -1.5708 0.0 base_link sonar 100" />
+    <node pkg="tf" type="static_transform_publisher" name="sonar_broadcaster" args="-0.2 0.0 -0.17 0.0 1.5708 0.0 base_link sonar 100" />
     <node pkg="rqt_plot" type="rqt_plot" name="sonar_rqt_plot" args="/crw_sonar_pub/range" />
     
     <node pkg="ros_lutra" type="lutra_fm_ireland.py" name="fm_explorer" respawn="false" output="screen">

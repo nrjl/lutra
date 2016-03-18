@@ -1,7 +1,10 @@
 <launch>
-    <node pkg="tf" type="static_transform_publisher" name="sonar_broadcaster" args="-0.2 0.0 -0.17 0.0 -1.5708 0.0 base_link sonar 100" />
+    <node pkg="tf" type="static_transform_publisher" name="sonar_broadcaster" args="-0.2 0.0 -0.17 0.0 1.5708 0.0 base_link sonar 100" />
         
-    <node pkg="ros_lutra" type="lutra_fm_ireland.py" name="fm_explorer" respawn="false" output="screen">
-        <rosparam file="$(find ros_lutra)/ireland_lane_params.yaml" command="load"/>
+    <node pkg="ros_lutra" type="sonar_plot.py" name="sonar_plot" respawn="false" output="screen">
+        <rosparam file="$(find ros_lutra)/sonar_plot_params.yaml" command="load"/>
     </node>
+    
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find ros_lutra)/data/sonar.rviz"/>
+    
 </launch>
