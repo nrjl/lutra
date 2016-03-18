@@ -5,7 +5,7 @@ import rospy
 import geodesy.utm
 from std_msgs.msg import Header, ColorRGBA
 from geographic_msgs.msg import GeoPoint, GeoPose
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, PointStamped
 from sensor_msgs.msg import Range
 from visualization_msgs.msg import Marker
 import tf
@@ -13,6 +13,7 @@ import os.path
 import pickle
 import GPy
 from matplotlib import cm
+import copy
 
 def sample_cost_fun(cf, x):
     y = cf(x[0], x[1]) + random.normalvariate(0, 0.25)
@@ -106,11 +107,13 @@ class LutraSonar:
         # ROS pub/subs
         print "Setting up publishers and subscribers..."
         self.depth_marker_pub_ = rospy.Publisher('/sonar_marker', Marker, queue_size=1)
+        self.wp_pub_ = rospy.Publisher('/crw_waypoint_sub', GeoPose, queue_size=10)
         if self.online_GP:
             self.GP_pub_=rospy.Publisher('/sonar_GP',Marker,queue_size=1)
         self.wp_sub_ = rospy.Subscriber('/crw_waypoint_reached', GeoPose, self.waypoint_reached_callback)
         self.pos_sub_ = rospy.Subscriber('/crw_geopose_pub', GeoPose, self.pose_callback)
         self.depth_sub_ = rospy.Subscriber('/crw_sonar_pub', Range, self.sonar_callback)
+        self.clicked_sub_ = rospy.Subscriber('/clicked_point', PointStamped, self.clicked_callback)
         
         # TF broadcaster and listener
         self.tf_broadcaster = tf.TransformBroadcaster()
@@ -159,8 +162,8 @@ class LutraSonar:
             Y = np.atleast_2d(self.GP_obs[0:obs_dex,2]).transpose()
             self.sonar_GP.set_XY(X,Y-self.mean_depth)
             y_star,y_var = self.sonar_GP.predict(self.X_star)
-            y_star = y_star + self.mean_depth
-            cols = cm.jet((np.ravel(y_var) - y_var.min())/(y_var.max()-y_var.min()))
+            y_star = y_star*5.0 + self.mean_depth
+            cols = cm.jet((np.ravel(y_star) - y_star.min())/(y_star.max()-y_star.min()))
             for i in range(self.X_star.shape[0]):
                 self.GP_marker.points[i].z = -y_star[i]
                 self.GP_marker.colors[i].r = cols[i,0]
@@ -203,6 +206,12 @@ class LutraSonar:
             print "Waypoint 0: defining local origin."
             self.zero_utm = self.pp
         self.num_visited += 1
+        
+    def clicked_callback(self, msg):
+        gpose = self.get_utm_coords([msg.point.x, msg.point.y])
+        outmsg = GeoPose()
+        outmsg.position = gpose.toMsg()
+        self.wp_pub_.publish(outmsg) 
 
 if __name__ == '__main__':
 
@@ -218,6 +227,6 @@ if __name__ == '__main__':
     GP_model = pickle.load(fh)
     mean_depth = pickle.load(fh)
     fh.close()
-    pond_image = os.path.expanduser("~")+'/catkin_ws/src/ros_lutra/data/ireland_lane_pond'
+    pond_image = os.path.expanduser("~")+'/catkin_ws/src/ros_lutra/data/ireland_lane_GP'
     sonar_plotter = LutraSonar(max_points, timeout, mean_depth, fake_sonar_freq, GPm=GP_model, pond_image=pond_image, online_GP=online_GP)
     rospy.spin()
